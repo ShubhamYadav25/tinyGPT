@@ -73,3 +73,81 @@ print(decoded_text)
 assert decoded_text == text
 
 print("Round-trip check passed!")
+
+#============================================ Train the model to predict the next character in a sequence. ===========================================
+"""
+Training examples
+Input (context)
+h
+
+Correct next character
+e
+
+
+Input (context)
+he
+
+Correct next character
+l
+
+
+Input (context)
+hel
+
+Correct next character
+l
+
+
+Input (context)
+hell
+
+Correct next character
+o
+"""
+
+
+# ============================================================
+# STEP 2: CREATE INPUT-TARGET TRAINING EXAMPLES
+# Goal: Teach the model to predict the next character.
+# ============================================================
+
+# Our tiny example dataset.
+text = "hello"
+
+# How many previous characters can the model see?
+# For now, we will allow the context to grow.
+# Later, we will use a fixed context length.
+context_length = 3
+
+print("Training text:", text)
+print("\nTraining examples:\n")
+
+# Each position gives us a context and its next character.
+for i in range(1, len(text)):
+
+    # Take all characters before position i.
+    # Example: when i = 3, context = "hel".
+    context = text[:i]
+
+    # The character at position i is the correct answer.
+    # Example: when i = 3, target = "l".
+    target = text[i]
+
+    print(f"Input: {context!r:8} -> Target: {target!r}")
+
+
+print("\n" + "=" * 40)
+print("Now use a fixed context length:", context_length)
+print("=" * 40)
+
+# A model commonly receives a limited number of characters.
+# We slide this fixed-size window across the text.
+for i in range(len(text) - context_length):
+
+    # Select three consecutive characters as the input.
+    context = text[i:i + context_length]
+
+    # The next character becomes the target.
+    target = text[i + context_length]
+
+    print(f"Input: {context!r} -> Target: {target!r}")
