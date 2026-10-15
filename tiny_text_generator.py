@@ -151,3 +151,101 @@ for i in range(len(text) - context_length):
     target = text[i + context_length]
 
     print(f"Input: {context!r} -> Target: {target!r}")
+
+#=============================================== Convert training examples into numbers
+
+# ============================================================
+# STEP 3: PREPARE NUMERICAL TRAINING DATA
+# Goal: Create X (inputs) and Y (correct next-character IDs).
+# ============================================================
+
+import numpy as np
+
+# 1. Training text.
+text = "hello"
+
+# 2. Create our vocabulary.
+# Sorting ensures that character IDs are reproducible.
+vocabulary = sorted(set(text))
+
+# Convert each character to an integer ID.
+char_to_id = {
+    char: index
+    for index, char in enumerate(vocabulary)
+}
+
+# Reverse mapping: integer ID -> character.
+id_to_char = {
+    index: char
+    for char, index in char_to_id.items()
+}
+
+print("Vocabulary:", vocabulary)
+print("Character IDs:", char_to_id)
+
+
+# 3. Encode the entire text as integers.
+# Example: "hello" -> [1, 0, 2, 2, 3]
+encoded = np.array([
+    char_to_id[char]
+    for char in text
+])
+
+print("\nEncoded text:", encoded)
+
+
+# 4. Choose how many characters the model can see.
+context_length = 3
+
+# X stores the input character IDs.
+# Y stores the ID of the correct next character.
+X = []
+Y = []
+
+# Slide a window across the encoded sequence.
+# Stop when there is no character left to predict.
+for i in range(len(encoded) - context_length):
+
+    # Take three consecutive IDs as the input.
+    input_ids = encoded[i:i + context_length]
+
+    # The next ID is the correct target.
+    target_id = encoded[i + context_length]
+
+    X.append(input_ids)
+    Y.append(target_id)
+
+
+# 5. Convert the lists into NumPy arrays.
+# Arrays make numerical operations easier later.
+X = np.array(X, dtype=np.int64)
+Y = np.array(Y, dtype=np.int64)
+
+print("\nInput array X:")
+print(X)
+
+print("\nTarget array Y:")
+print(Y)
+
+
+# 6. Inspect the shape of our data.
+# Shape tells us the dimensions of an array.
+print("\nShape of X:", X.shape)
+print("Shape of Y:", Y.shape)
+
+
+# 7. Decode the examples to check our work.
+print("\nHuman-readable training examples:")
+
+for input_ids, target_id in zip(X, Y):
+
+    # Convert the input IDs back into characters.
+    input_text = "".join(
+        id_to_char[int(token_id)]
+        for token_id in input_ids
+    )
+
+    # Convert the target ID back into its character.
+    target_char = id_to_char[int(target_id)]
+
+    print(f"Input: {input_text!r} -> Target: {target_char!r}")
