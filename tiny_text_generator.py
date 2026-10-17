@@ -1058,3 +1058,1515 @@ Sampling chooses a character randomly according to the model's probability distr
 
 """
 
+# ======================================== Embeddings and positional information ============================
+"""
+So far, our text generator uses one-hot vectors: each character is represented by a vector containing mostly zeros and one 1. That was useful for learning the fundamentals, but modern language models use a more flexible representation called an embedding.
+In this:
+1. Why token IDs aren't enough.
+2. What embeddings are and how an embedding matrix works.
+3. How positional information tells the model where each token occurs.
+4. How to combine token embeddings and positional embeddings using NumPy.
+
+
+Character	Token ID
+e	0
+h	1
+l	2
+o	3
+A token ID is just a label. For example, the ID 3 for o doesn't mean that o is more important than e, whose ID is 0.
+
+In our earlier model, we converted each ID into a one-hot vector. For example:
+[0 1 0 0 0]
+
+One-hot vectors work, but they don't give us a trainable, compact representation in which the model can learn useful features for each token.
+An embedding is a vector of numbers that the model learns for each token.
+
+For example, instead of representing l as [0, 0, 1, 0], our model might learn a four-dimensional vector such as:
+l → [0.21, -0.43, 0.76, 0.12]
+
+Positional information:
+
+Sequence A: ell
+Sequence B: lle
+
+They contain the same characters, but the order is different.
+Token embeddings alone tell us which character is present. They don't explicitly tell the model whether that character occurs at position 0, 1, or 2.
+
+Transformers therefore need a way to represent order. In the version we're building, we'll use learned positional embeddings.
+Each position gets its own vector, independently of the token at that position.
+
+Token embedding (Which character is this?)
+
++
+Position embedding (Where does it occur?)
+
+Combined representation (Information about token identity and position)
+
+ONE MORE EXAMPLE ON Positional embeddings:
+- The dog bites the man.
+- The man bites the dog.
+The same words appear, but the order changes the meaning.
+A language model needs to understand two things: which token it is looking at and where that token occurs in the sequence.
+
+Notice that l appears twice: once at position 1 and once at position 2.
+Both occurrences have the same token ID and token embedding, because they represent the same character.
+But they occupy different positions.
+"""
+
+# ============================================================
+# STEP 9: TOKEN EMBEDDINGS + POSITIONAL EMBEDDINGS
+#
+# Goal:
+#   Represent each token as a vector and give it position info.
+#
+# Important:
+#   These embeddings are randomly initialized for now.
+#   They have NOT been trained to represent language patterns.
+# ============================================================
+
+import numpy as np
+
+np.random.seed(42)
+
+
+# ------------------------------------------------------------
+# PART 1: Create the vocabulary
+# ------------------------------------------------------------
+
+text = "hello"
+
+# Each unique character receives a stable integer ID.
+vocabulary = sorted(set(text))
+
+char_to_id = {
+    character: index
+    for index, character in enumerate(vocabulary)
+}
+
+id_to_char = {
+    index: character
+    for character, index in char_to_id.items()
+}
+
+vocab_size = len(vocabulary)
+
+print("Vocabulary:", vocabulary)
+print("Character IDs:", char_to_id)
+
+
+# ------------------------------------------------------------
+# PART 2: Define the embedding dimensions
+# ------------------------------------------------------------
+
+# How many numbers will represent each token?
+embedding_dim = 4
+
+# How many positions can the model accept at once?
+context_length = 3
+
+print("\nEmbedding dimension:", embedding_dim)
+print("Maximum context length:", context_length)
+
+
+# ------------------------------------------------------------
+# PART 3: Initialize the token embedding matrix
+# ------------------------------------------------------------
+
+# One row for every vocabulary character.
+# One column for every embedding feature.
+#
+# Shape: (vocab_size, embedding_dim)
+#
+# In a real model, these values are trainable parameters.
+token_embeddings = (
+    np.random.randn(vocab_size, embedding_dim) * 0.1
+)
+
+print("\nToken embedding matrix:")
+print(np.round(token_embeddings, 3))
+
+print("Token embedding shape:", token_embeddings.shape)
+
+
+# ------------------------------------------------------------
+# PART 4: Look up the embeddings for "ell"
+# ------------------------------------------------------------
+
+input_text = "ell"
+
+# Convert characters into integer IDs.
+token_ids = [
+    char_to_id[character]
+    for character in input_text
+]
+
+# Each ID selects one row from the embedding matrix.
+# The result has one row per token.
+token_vectors = token_embeddings[token_ids]
+
+print("\nInput text:", input_text)
+print("Token IDs:", token_ids)
+
+print("\nToken vectors:")
+print(np.round(token_vectors, 3))
+
+print("Token vectors shape:", token_vectors.shape)
+
+
+# ------------------------------------------------------------
+# PART 5: Initialize positional embeddings
+# ------------------------------------------------------------
+
+# Every position gets a vector of embedding_dim numbers.
+#
+# Shape: (context_length, embedding_dim)
+#
+# These are separate, trainable parameters.
+position_embeddings = (
+    np.random.randn(context_length, embedding_dim) * 0.1
+)
+
+print("\nPositional embedding matrix:")
+print(np.round(position_embeddings, 3))
+
+print(
+    "Position embedding shape:",
+    position_embeddings.shape
+)
+
+
+# ------------------------------------------------------------
+# PART 6: Select positions for our sequence
+# ------------------------------------------------------------
+
+# "ell" has three characters at positions 0, 1, and 2.
+positions = np.arange(len(token_ids))
+
+# Select the positional vector for each position.
+position_vectors = position_embeddings[positions]
+
+print("\nPosition vectors:")
+print(np.round(position_vectors, 3))
+
+
+# ------------------------------------------------------------
+# PART 7: Combine token and position information
+# ------------------------------------------------------------
+
+# Add corresponding elements of both matrices.
+#
+# token_vectors:    (3, 4)
+# position_vectors: (3, 4)
+# combined:         (3, 4)
+
+combined_embeddings = token_vectors + position_vectors
+
+print("\nCombined embeddings:")
+print(np.round(combined_embeddings, 3))
+
+print(
+    "Combined embedding shape:",
+    combined_embeddings.shape
+)
+
+
+# ------------------------------------------------------------
+# PART 8: Verify the effect of position
+# ------------------------------------------------------------
+
+# In "ell", the second and third characters are both 'l'.
+# Their token embeddings should be identical.
+same_token = np.allclose(
+    token_vectors[1],
+    token_vectors[2]
+)
+
+# But they occur at different positions, so their combined
+# representations should differ for these random values.
+different_positions = not np.allclose(
+    combined_embeddings[1],
+    combined_embeddings[2]
+)
+
+print("\nAre the two 'l' token embeddings equal?", same_token)
+print(
+    "Are their combined representations different?",
+    different_positions
+)
+
+assert same_token
+assert different_positions
+
+print("\nEmbedding and position checks passed!")
+
+#============================================ Q, K, V ============================================
+"""
+The weight matrices \(W_Q\), \(W_K\), and \(W_V\) contain learnable parameters. During training, the model adjusts them to produce useful query, key, and value representations.
+
+Matrix	Shape	Meaning
+\(X\)	(3, 4)	3 input tokens, 4 features each
+\(W_Q\)	(4, 3)	Projection into query space
+\(W_K\)	(4, 3)	Projection into key space
+\(W_V\)	(4, 3)	Projection into value space
+\(Q, K, V\)	(3, 3) each	One 3-number vector per token
+
+Why do the shapes work? Matrix multiplication follows this rule:
+(3, 4) @ (4, 3) = (3, 3)
+
+"""
+
+
+# ============================================================
+# STEP 10: QUERY, KEY, AND VALUE
+#
+# Goal:
+#   Calculate Q, K, and V from token + position embeddings.
+#
+# We use NumPy to expose the matrix calculations.
+# These parameters are randomly initialized, not trained.
+# ============================================================
+
+import numpy as np
+
+np.random.seed(42)
+
+# ------------------------------------------------------------
+# PART 1: Create our vocabulary and input sequence
+# ------------------------------------------------------------
+
+text = "hello"
+
+# Each unique character gets one stable token ID.
+vocabulary = sorted(set(text))
+
+char_to_id = {
+    character: index
+    for index, character in enumerate(vocabulary)
+}
+
+input_text = "hel"
+
+# Convert the input text to integer IDs.
+token_ids = [
+    char_to_id[character]
+    for character in input_text
+]
+
+print("Vocabulary:", vocabulary)
+print("Input text:", input_text)
+print("Token IDs:", token_ids)
+
+
+# ------------------------------------------------------------
+# PART 2: Configure the embedding dimensions
+# ------------------------------------------------------------
+
+vocab_size = len(vocabulary)
+
+# Each character gets a 4-number embedding vector.
+d_model = 4
+
+# Our sequence contains three characters.
+sequence_length = len(token_ids)
+
+# Each Q, K, and V vector will have 3 numbers.
+d_k = 3
+d_v = 3
+
+
+# ------------------------------------------------------------
+# PART 3: Create token and position embeddings
+# ------------------------------------------------------------
+
+# Token embedding matrix:
+# one row per vocabulary character.
+token_embedding_table = (
+    np.random.randn(vocab_size, d_model) * 0.1
+)
+
+# Position embedding matrix:
+# one row per position in our input sequence.
+position_embedding_table = (
+    np.random.randn(sequence_length, d_model) * 0.1
+)
+
+# Look up the vector for each input character.
+token_vectors = token_embedding_table[token_ids]
+
+# Select the vector for each position.
+position_vectors = position_embedding_table[
+    np.arange(sequence_length)
+]
+
+# Combine token identity and positional information.
+# Shape: (sequence_length, d_model) = (3, 4)
+X = token_vectors + position_vectors
+
+print("\nInput representation X:")
+print(np.round(X, 3))
+print("X shape:", X.shape)
+
+
+# ------------------------------------------------------------
+# PART 4: Initialize the three projection matrices
+# ------------------------------------------------------------
+
+# Each projection transforms 4 input features into 3 features.
+#
+# W_Q: used to calculate queries.
+# W_K: used to calculate keys.
+# W_V: used to calculate values.
+
+W_Q = np.random.randn(d_model, d_k) * 0.1
+W_K = np.random.randn(d_model, d_k) * 0.1
+W_V = np.random.randn(d_model, d_v) * 0.1
+
+print("\nW_Q shape:", W_Q.shape)
+print("W_K shape:", W_K.shape)
+print("W_V shape:", W_V.shape)
+
+
+# ------------------------------------------------------------
+# PART 5: Calculate Q, K, and V
+# ------------------------------------------------------------
+
+# Every row of X is transformed using each weight matrix.
+Q = X @ W_Q
+K = X @ W_K
+V = X @ W_V
+
+print("\nQuery matrix Q:")
+print(np.round(Q, 3))
+print("Q shape:", Q.shape)
+
+print("\nKey matrix K:")
+print(np.round(K, 3))
+print("K shape:", K.shape)
+
+print("\nValue matrix V:")
+print(np.round(V, 3))
+print("V shape:", V.shape)
+
+
+# ------------------------------------------------------------
+# PART 6: Inspect the vectors for each character
+# ------------------------------------------------------------
+
+print("\nQ, K, and V for each token:")
+
+for i, character in enumerate(input_text):
+    print(f"\nToken: {character!r} at position {i}")
+    print("  Query:", np.round(Q[i], 3))
+    print("  Key:  ", np.round(K[i], 3))
+    print("  Value:", np.round(V[i], 3))
+
+
+# ------------------------------------------------------------
+# PART 7: Verify the dimensions
+# ------------------------------------------------------------
+
+assert X.shape == (3, 4)
+assert Q.shape == (3, 3)
+assert K.shape == (3, 3)
+assert V.shape == (3, 3)
+
+print("\nAll matrix shape checks passed!")
+
+"""
+What do we actually do with Q, K, and V?
+
+This is where the pieces connect.
+Suppose the model is processing the character l in hel. It needs to determine how much information to take from the other characters: h, e, and l.
+It uses the query for l to compare against the keys of all three tokens.
+The comparison generates attention scores:
+
+1. Compare Queries and Keys
+Calculate how relevant each token is to another.
+
+2. Softmax the scores
+Turn each token's scores into attention weights.
+
+3. Combine the Values
+Use those weights to mix information from the value vectors.
+
+In other words:
+- Q and K determine where attention goes.
+- V determines what information is gathered.
+The weights are not manually programmed meanings. The model learns useful projections during training.
+"""
+
+"""
+Imagine our input is: the cat sat
+Suppose the model is processing the token sat. To understand this token in context, it may benefit from information about cat, because the cat is the one doing the sitting.
+
+A useful language model needs a way to decide:
+1. Which other tokens should I pay attention to?
+2. How relevant is each token to me?
+3. What information should I take from those tokens?
+
+That's the problem self-attention solves.
+Without attention, a model can still learn patterns, but it has no explicit mechanism for dynamically calculating relationships between tokens and mixing their information according to those relationships.
+
+Q, K, and V
+
+Q
+Query: What information am I looking for?
+The token uses its query to search for relevant information among the other tokens.
+
+
+
+K
+Key: How can other tokens recognize my relevance?
+Each token has a key that gets compared with the query to calculate how well they match.
+
+
+
+V
+Value: What information can I contribute?
+This is the representation whose information gets combined after the model calculates the attention weights.
+
+The distinction matters:
+- Q and K help decide where attention should go.
+- V contains what information is passed along.
+
+The comparison produces scores. Higher relative scores lead to larger attention weights. Those weights determine how much each word's value contributes to the resulting representation of sat.
+This is what lets a Transformer build context-aware representations of tokens.
+
+We create three separate matrices:
+Matrix	What it learns to produce
+\(W_Q\)	Query features for searching for relevant tokens
+\(W_K\)	Key features for matching incoming queries
+\(W_V\)	Value features for passing useful information along
+
+Think of the three matrices as three different filters applied to the same input.
+The input is the same, but each filter transforms it differently.
+
+\[
+Q=XW_Q
+\]
+
+\[
+K=XW_K
+\]
+
+\[
+V=XW_V
+\]
+
+Each equation says:
+"Take every token's input vector and transform it using the matrix for this particular role."
+
+Starting input vector
+0.2 0.5 -0.1 0.7
+
+4 input features
+
+Apply three different transformations
+Q
+Using WQ
+Search features
+
+
+K
+Using WK
+Matching features
+
+
+V
+Using WV
+Information features
+
+Why is Q, K, and V calculated for every token?
+
+Because every token may need to gather information from other tokens.
+Notice something important: the weight matrices are shared across all the tokens.
+
+We don't create a separate \(W_Q\) for h, another for e, and another for l. We use the same \(W_Q\) for every token, and the different input vectors produce different queries.
+That's an important property of Transformers: the same learned projection rules are applied at every position.
+
+What do we actually achieve by calculating Q, K, and V?
+
+Let's follow the complete flow.
+Input X
+Token embeddings + positional information
+
+Create Q, K, V
+Learned projections of each token
+
+Compare Q with K
+Calculate a score for each token pair
+
+Softmax + causal mask
+Convert allowed scores into attention weights
+
+Combine V using the attention weights
+Create context-aware token representations
+
+First: Q and K determine attention weights
+The model compares each query with every key using a dot product:
+This produces an attention score matrix \(S\).
+
+For three input tokens, the matrix has shape (3, 3). Each row represents the token doing the attending; each column represents a token that could supply information.
+After applying the causal mask and softmax, the result is an attention-weight matrix \(A\).
+
+Second: attention weights determine how V is combined
+The model calculates:  O=AV
+
+Suppose a token gives 70% attention weight to one other token and 30% to another. Its resulting representation will combine 70% of the first value vector and 30% of the second, along with any contribution from other permitted positions
+
+Concept	Purpose
+Q, K, V	Represent tokens for matching and information transfer
+Attention weights	Decide how much information to gather from each token
+Attention output	The new context-aware representation created from the value vectors
+
+What is the causal mask, and why does GPT need it?
+This is one of the most important details for a text generator.
+Suppose you're generating a sentence from left to right. When predicting the next character after he, the model must not be allowed to look at future characters that haven't been generated yet.
+For GPT, token 1 can attend only to token 1. Token 2 can attend to tokens 1 and 2. Token 3 can attend to tokens 1, 2, and 3.
+"""
+
+# ============================================================
+# STEP 11: SINGLE-HEAD CAUSAL SELF-ATTENTION
+#
+# Goal:
+#   1. Calculate query-key attention scores.
+#   2. Block access to future tokens.
+#   3. Convert scores into attention weights using softmax.
+#   4. Combine value vectors using those weights.
+#
+# These Q, K, and V values are chosen for learning.
+# They are not outputs of a trained neural network.
+# ============================================================
+
+import numpy as np
+
+np.set_printoptions(precision=3, suppress=True)
+
+
+# ------------------------------------------------------------
+# PART 1: Define Q, K, and V
+# ------------------------------------------------------------
+
+# Three tokens, two features in each query vector.
+Q = np.array([
+    [1.0, 0.0],   # Query for token 1
+    [0.0, 1.0],   # Query for token 2
+    [1.0, 1.0],   # Query for token 3
+])
+
+# Keys have the same feature dimension as queries.
+# We use the same numbers as Q for simpler arithmetic.
+K = np.array([
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [1.0, 1.0],
+])
+
+# Each token has a two-dimensional value vector.
+# These values carry the information to be combined.
+V = np.array([
+    [10.0, 1.0],  # Value of token 1
+    [2.0, 8.0],   # Value of token 2
+    [4.0, 3.0],   # Value of token 3
+])
+
+sequence_length = Q.shape[0]
+d_k = Q.shape[1]
+
+print("Q shape:", Q.shape)
+print("K shape:", K.shape)
+print("V shape:", V.shape)
+
+
+# ------------------------------------------------------------
+# PART 2: Calculate attention scores
+# ------------------------------------------------------------
+
+# K.T transposes the key matrix.
+#
+# Q @ K.T compares each query with every key.
+# Dividing by sqrt(d_k) scales the scores.
+#
+# Result shape: (number of queries, number of keys)
+scores = (Q @ K.T) / np.sqrt(d_k)
+
+print("\nRaw attention scores:")
+print(scores)
+
+
+# ------------------------------------------------------------
+# PART 3: Build the causal mask
+# ------------------------------------------------------------
+
+# np.triu creates an upper-triangular matrix.
+# k=1 selects positions strictly above the diagonal.
+#
+# Those positions represent future tokens.
+#
+# True  = future position, must be blocked.
+# False = current or previous position, allowed.
+
+future_mask = np.triu(
+    np.ones(
+        (sequence_length, sequence_length),
+        dtype=bool
+    ),
+    k=1
+)
+
+print("\nFuture-position mask:")
+print(future_mask)
+
+
+# ------------------------------------------------------------
+# PART 4: Block future positions
+# ------------------------------------------------------------
+
+# Make a copy so we preserve the original scores.
+masked_scores = scores.copy()
+
+# Negative infinity ensures future positions receive
+# exactly zero weight after softmax.
+masked_scores[future_mask] = -np.inf
+
+print("\nMasked attention scores:")
+print(masked_scores)
+
+
+# ------------------------------------------------------------
+# PART 5: Implement row-wise softmax
+# ------------------------------------------------------------
+
+def softmax_rows(matrix):
+
+    # Subtract the maximum from every row for numerical stability.
+    shifted = matrix - np.max(
+        matrix,
+        axis=1,
+        keepdims=True
+    )
+
+    # Exponentiate the shifted scores.
+    exponentials = np.exp(shifted)
+
+    # Normalize each row independently.
+    # The rows will sum to 1.
+    return exponentials / np.sum(
+        exponentials,
+        axis=1,
+        keepdims=True
+    )
+
+
+# Convert masked scores into attention weights.
+attention_weights = softmax_rows(masked_scores)
+
+print("\nAttention weights:")
+print(attention_weights)
+
+print("\nSum of each attention row:")
+print(attention_weights.sum(axis=1))
+
+
+# ------------------------------------------------------------
+# PART 6: Combine the value vectors
+# ------------------------------------------------------------
+
+# Each output row is a weighted combination of values.
+#
+# Output shape:
+# (sequence_length, value_dimension)
+output = attention_weights @ V
+
+print("\nAttention output:")
+print(output)
+
+print("Output shape:", output.shape)
+
+
+# ------------------------------------------------------------
+# PART 7: Verify important properties
+# ------------------------------------------------------------
+
+# Every row must sum to approximately 1.
+assert np.allclose(
+    attention_weights.sum(axis=1),
+    np.ones(sequence_length)
+)
+
+# No token should attend to a future token.
+assert np.allclose(
+    np.triu(attention_weights, k=1),
+    0.0
+)
+
+# One output vector must exist for every input token.
+assert output.shape == V.shape
+
+print("\nAll attention checks passed!")
+
+"""
+Why do we call it “single-head” attention?
+
+The word head means one independent attention mechanism.
+Imagine we have the input h e l. Each character has its own vector. One attention head transforms those vectors into Q, K, and V, calculates one attention-weight matrix, and uses it to combine the values.
+
+Single-head attention
+Input X
+All token vectors
+
+One set of projections
+Q, K, V
+
+One attention-weight matrix
+One distribution for each token
+
+One attention output
+
+What changes in multi-head attention?
+Multi-head attention runs multiple independent attention heads in parallel.
+
+Same input X
+
+Head 1
+Q₁, K₁, V₁
+
+Attention output 1
+
+
+Head 2
+Q₂, K₂, V₂
+
+Attention output 2
+
+
+
+Combine head outputs
+Usually concatenate them, then apply an output projection.
+
+Each head has its own learned projection matrices. One head might learn useful relationships between nearby tokens, while another might learn different relationships. These are possibilities, not manually assigned jobs; training determines what each head learns.
+
+Remember: single-head and multi-head refer to the number of attention mechanisms, not the number of tokens or dimensions.
+
+"""
+
+
+"""
+Input text
+"hello"
+
+Token + positional embeddings
+Create X automatically
+
+Learnable projection matrices
+Initialize WQ, WK, WV
+
+Calculate Q, K, V
+Matrix multiplication
+
+Causal self-attention
+Scores → mask → softmax → weighted values
+
+Attention output
+A new representation for every token
+"""
+
+# ============================================================
+# STEP 11: COMPLETE SINGLE-HEAD CAUSAL SELF-ATTENTION
+#
+# No hardcoded Q, K, or V values!
+#
+# Everything is calculated from:
+#   1. Input text
+#   2. Token embeddings
+#   3. Positional embeddings
+#   4. Automatically initialized projection matrices
+#
+# Note:
+#   This demonstrates a forward pass.
+#   The parameters are NOT trained yet.
+# ============================================================
+
+import numpy as np
+
+# Fix the random seed so the example is reproducible.
+# Running the code again will produce the same initial values.
+rng = np.random.default_rng(42)
+
+np.set_printoptions(precision=3, suppress=True)
+
+
+# ------------------------------------------------------------
+# PART 1: Convert text into token IDs
+# ------------------------------------------------------------
+
+# Our tiny example text.
+# We are using characters as tokens to keep things simple.
+training_text = "hello"
+
+# Extract the unique characters and sort them.
+vocabulary = sorted(set(training_text))
+
+# Create both mappings automatically.
+char_to_id = {
+    character: index
+    for index, character in enumerate(vocabulary)
+}
+
+id_to_char = {
+    index: character
+    for character, index in char_to_id.items()
+}
+
+# Choose an input sequence.
+input_text = "hello"
+
+# Convert each input character to an integer ID.
+token_ids = np.array([
+    char_to_id[character]
+    for character in input_text
+])
+
+vocab_size = len(vocabulary)
+sequence_length = len(token_ids)
+
+print("Vocabulary:", vocabulary)
+print("Character IDs:", char_to_id)
+print("Input text:", input_text)
+print("Token IDs:", token_ids)
+
+
+# ------------------------------------------------------------
+# PART 2: Set the dimensions
+# ------------------------------------------------------------
+
+# d_model: number of features in each input embedding.
+d_model = 4
+
+# d_k: number of features in each query and key.
+d_k = 3
+
+# d_v: number of features in each value vector.
+d_v = 3
+
+print("\nInput settings:")
+print("Vocabulary size:", vocab_size)
+print("Sequence length:", sequence_length)
+print("Model dimension:", d_model)
+print("Query/key dimension:", d_k)
+print("Value dimension:", d_v)
+
+
+# ------------------------------------------------------------
+# PART 3: Initialize token embeddings
+# ------------------------------------------------------------
+
+# Each vocabulary character gets a vector of d_model numbers.
+#
+# Shape: (vocab_size, d_model)
+#
+# These are random initial parameters.
+# Training will eventually adjust them.
+
+token_embedding_table = rng.normal(
+    loc=0.0,
+    scale=0.1,
+    size=(vocab_size, d_model)
+)
+
+print("\nToken embedding table shape:",
+      token_embedding_table.shape)
+
+# Look up the embedding for every token in our input.
+#
+# Example:
+# If token ID 1 represents 'h', use row 1 of the table.
+token_vectors = token_embedding_table[token_ids]
+
+
+# ------------------------------------------------------------
+# PART 4: Initialize positional embeddings
+# ------------------------------------------------------------
+
+# Each position gets a vector of d_model numbers.
+#
+# For this small demonstration, the table has one row
+# for every position in the input sequence.
+#
+# Shape: (sequence_length, d_model)
+
+position_embedding_table = rng.normal(
+    loc=0.0,
+    scale=0.1,
+    size=(sequence_length, d_model)
+)
+
+print("Position embedding table shape:",
+      position_embedding_table.shape)
+
+# Position 0, position 1, and so on.
+positions = np.arange(sequence_length)
+
+# Select the position vector for each token.
+position_vectors = position_embedding_table[positions]
+
+
+# ------------------------------------------------------------
+# PART 5: Construct X
+# ------------------------------------------------------------
+
+# Add the token and position vectors.
+#
+# token_vectors:    (sequence_length, d_model)
+# position_vectors: (sequence_length, d_model)
+# X:                (sequence_length, d_model)
+
+X = token_vectors + position_vectors
+
+print("\nInput matrix X:")
+print(X)
+print("X shape:", X.shape)
+
+
+# ------------------------------------------------------------
+# PART 6: Initialize the projection matrices
+# ------------------------------------------------------------
+
+# The model needs three separate transformations.
+#
+# W_Q produces queries.
+# W_K produces keys.
+# W_V produces values.
+#
+# These are automatically initialized, not manually specified.
+#
+# W_Q: (d_model, d_k)
+# W_K: (d_model, d_k)
+# W_V: (d_model, d_v)
+
+W_Q = rng.normal(
+    loc=0.0,
+    scale=1 / np.sqrt(d_model),
+    size=(d_model, d_k)
+)
+
+W_K = rng.normal(
+    loc=0.0,
+    scale=1 / np.sqrt(d_model),
+    size=(d_model, d_k)
+)
+
+W_V = rng.normal(
+    loc=0.0,
+    scale=1 / np.sqrt(d_model),
+    size=(d_model, d_v)
+)
+
+print("\nW_Q shape:", W_Q.shape)
+print("W_K shape:", W_K.shape)
+print("W_V shape:", W_V.shape)
+
+
+# ------------------------------------------------------------
+# PART 7: Calculate Q, K, and V
+# ------------------------------------------------------------
+
+# Each token vector is transformed using the same
+# projection matrix for that particular role.
+#
+# Q, K and V are calculated for EVERY token.
+#
+# Q = X @ W_Q
+# K = X @ W_K
+# V = X @ W_V
+
+Q = X @ W_Q
+K = X @ W_K
+V = X @ W_V
+
+print("\nQ matrix:")
+print(Q)
+print("Q shape:", Q.shape)
+
+print("\nK matrix:")
+print(K)
+print("K shape:", K.shape)
+
+print("\nV matrix:")
+print(V)
+print("V shape:", V.shape)
+
+
+# ------------------------------------------------------------
+# PART 8: Calculate query-key attention scores
+# ------------------------------------------------------------
+
+# Transpose K so its features align with Q for multiplication.
+#
+# Q:   (sequence_length, d_k)
+# K.T: (d_k, sequence_length)
+#
+# Result: (sequence_length, sequence_length)
+
+scores = (Q @ K.T) / np.sqrt(d_k)
+
+print("\nAttention scores before masking:")
+print(scores)
+print("Scores shape:", scores.shape)
+
+
+# ------------------------------------------------------------
+# PART 9: Apply the causal mask
+# ------------------------------------------------------------
+
+# Each token may attend to itself and previous tokens.
+# It must not attend to tokens occurring later in the sequence.
+#
+# np.triu(..., k=1) identifies positions strictly above
+# the main diagonal: the future positions.
+
+future_mask = np.triu(
+    np.ones(
+        (sequence_length, sequence_length),
+        dtype=bool
+    ),
+    k=1
+)
+
+# Replace future-position scores with negative infinity.
+masked_scores = scores.copy()
+masked_scores[future_mask] = -np.inf
+
+print("\nScores after causal masking:")
+print(masked_scores)
+
+
+# ------------------------------------------------------------
+# PART 10: Convert scores into attention weights
+# ------------------------------------------------------------
+
+def softmax_rows(matrix):
+    """
+    Apply softmax independently to every row.
+
+    Subtracting each row's maximum makes the calculation
+    more numerically stable.
+    """
+
+    row_max = np.max(
+        matrix,
+        axis=1,
+        keepdims=True
+    )
+
+    shifted = matrix - row_max
+    exponentials = np.exp(shifted)
+
+    probabilities = exponentials / np.sum(
+        exponentials,
+        axis=1,
+        keepdims=True
+    )
+
+    return probabilities
+
+
+# Future positions have -inf scores, so softmax assigns
+# them zero attention weight.
+attention_weights = softmax_rows(masked_scores)
+
+print("\nAttention weights:")
+print(attention_weights)
+
+print("\nSum of each attention row:")
+print(attention_weights.sum(axis=1))
+
+
+# ------------------------------------------------------------
+# PART 11: Combine the value vectors
+# ------------------------------------------------------------
+
+# Multiply attention weights by V.
+#
+# Each output row is a weighted combination of the allowed
+# value vectors for that token.
+#
+# attention_weights: (sequence_length, sequence_length)
+# V:                 (sequence_length, d_v)
+# output:            (sequence_length, d_v)
+
+output = attention_weights @ V
+
+print("\nAttention output:")
+print(output)
+print("Output shape:", output.shape)
+
+
+# ------------------------------------------------------------
+# PART 12: Verify the results
+# ------------------------------------------------------------
+
+# Every attention row should sum to 1.
+assert np.allclose(
+    attention_weights.sum(axis=1),
+    np.ones(sequence_length)
+)
+
+# No token should attend to a future position.
+assert np.allclose(
+    np.triu(attention_weights, k=1),
+    0.0
+)
+
+# We should have one output vector per input token.
+assert output.shape == (sequence_length, d_v)
+
+print("\nAll checks passed!")
+print("The attention forward pass is complete.")
+
+"""
+Attention output:
+[[ 0.053 -0.054 -0.039]
+ [-0.024 -0.106 -0.033]
+ [-0.027 -0.118 -0.04 ]
+ [-0.046 -0.117 -0.007]
+ [-0.032 -0.099  0.003]]
+ 
+ Our input was hello, which has five character positions:
+Row	Input character	What this output represents
+0	h	New representation of h
+1	e	New representation of e, using allowed context
+2	l	New representation of l, using allowed context
+3	l	New representation of the second l, using allowed context
+4	o	New representation of o, using allowed context
+
+This is the new representation of the first token, h. => [ 0.053 -0.054 -0.039]
+
+The attention weights tell us how much each allowed token's value contributes to a particular token's new representation
+"""
+
+"""
+Why do we need multiple heads?
+
+One attention head calculates one set of attention weights. Another head calculates a different set using its own projection matrices.
+Conceptually, different heads can learn different relationships between tokens. For example, one might become useful for local patterns, while another might capture a different contextual relationship. These are possibilities learned during training, not fixed jobs assigned to the heads.
+
+Notice that each head uses four features because we have chosen d_model = 8 and num_heads = 2.
+\[
+d_{\text{head}}=\frac{d_{\text{model}}}{\text{num heads}}
+=\frac{8}{2}=4
+\]
+
+
+"""
+
+
+# ============================================================
+# STEP 12: MULTI-HEAD CAUSAL SELF-ATTENTION
+#
+# No manually entered Q, K, or V values.
+#
+# Each head has its own randomly initialized projection matrices.
+# The input is calculated from token + position embeddings.
+#
+# This is a forward pass, not a trained Transformer yet.
+# ============================================================
+
+import numpy as np
+
+rng = np.random.default_rng(42)
+np.set_printoptions(precision=3, suppress=True)
+
+
+# ------------------------------------------------------------
+# PART 1: Prepare the input text
+# ------------------------------------------------------------
+
+text = "hello"
+
+# Create the vocabulary automatically.
+vocabulary = sorted(set(text))
+
+# Character -> integer ID.
+char_to_id = {
+    char: index
+    for index, char in enumerate(vocabulary)
+}
+
+# Integer ID -> character.
+id_to_char = {
+    index: char
+    for char, index in char_to_id.items()
+}
+
+# Encode the input text.
+token_ids = np.array([
+    char_to_id[char]
+    for char in text
+])
+
+vocab_size = len(vocabulary)
+sequence_length = len(token_ids)
+
+print("Text:", text)
+print("Vocabulary:", vocabulary)
+print("Token IDs:", token_ids)
+
+
+# ------------------------------------------------------------
+# PART 2: Configure the model dimensions
+# ------------------------------------------------------------
+
+# Number of features representing each token.
+d_model = 8
+
+# Number of independent attention heads.
+num_heads = 2
+
+# For this model, divide model features evenly across heads.
+assert d_model % num_heads == 0
+
+head_dim = d_model // num_heads
+
+print("\nModel dimension:", d_model)
+print("Number of heads:", num_heads)
+print("Dimension per head:", head_dim)
+
+
+# ------------------------------------------------------------
+# PART 3: Create token embeddings
+# ------------------------------------------------------------
+
+# Each vocabulary token gets a vector of d_model values.
+#
+# Shape: (vocab_size, d_model)
+token_embedding_table = rng.normal(
+    loc=0.0,
+    scale=0.1,
+    size=(vocab_size, d_model)
+)
+
+# Select one embedding row for each input token.
+token_vectors = token_embedding_table[token_ids]
+
+print("\nToken embedding shape:", token_vectors.shape)
+
+
+# ------------------------------------------------------------
+# PART 4: Create positional embeddings
+# ------------------------------------------------------------
+
+# Each position gets its own d_model-dimensional vector.
+#
+# Shape: (sequence_length, d_model)
+position_embedding_table = rng.normal(
+    loc=0.0,
+    scale=0.1,
+    size=(sequence_length, d_model)
+)
+
+# Select the vector belonging to each position.
+positions = np.arange(sequence_length)
+position_vectors = position_embedding_table[positions]
+
+# Combine token identity and position.
+#
+# X shape: (sequence_length, d_model)
+X = token_vectors + position_vectors
+
+print("Input X shape:", X.shape)
+
+
+# ------------------------------------------------------------
+# PART 5: Initialize separate projection matrices per head
+# ------------------------------------------------------------
+
+# Each attention head gets its own W_Q, W_K, and W_V.
+#
+# Every matrix is initialized automatically from the random
+# number generator. None of Q, K, or V is manually specified.
+#
+# Each projection matrix has shape: (d_model, head_dim).
+
+W_Q = [
+    rng.normal(
+        loc=0.0,
+        scale=1 / np.sqrt(d_model),
+        size=(d_model, head_dim)
+    )
+    for _ in range(num_heads)
+]
+
+W_K = [
+    rng.normal(
+        loc=0.0,
+        scale=1 / np.sqrt(d_model),
+        size=(d_model, head_dim)
+    )
+    for _ in range(num_heads)
+]
+
+W_V = [
+    rng.normal(
+        loc=0.0,
+        scale=1 / np.sqrt(d_model),
+        size=(d_model, head_dim)
+    )
+    for _ in range(num_heads)
+]
+
+
+# ------------------------------------------------------------
+# PART 6: Implement causal attention
+# ------------------------------------------------------------
+
+def causal_attention(Q, K, V):
+    """
+    Calculate attention for one head.
+
+    Q, K: (sequence_length, head_dim)
+    V:    (sequence_length, head_dim)
+
+    Returns:
+        output:  (sequence_length, head_dim)
+        weights: (sequence_length, sequence_length)
+    """
+
+    # Compare every query with every key.
+    # Scaling helps keep dot-product scores well behaved.
+    scores = (Q @ K.T) / np.sqrt(Q.shape[1])
+
+    # Block future positions.
+    # Rows represent query positions; columns represent keys.
+    future_mask = np.triu(
+        np.ones(scores.shape, dtype=bool),
+        k=1
+    )
+
+    scores[future_mask] = -np.inf
+
+    # Row-wise softmax, with a stable maximum subtraction.
+    shifted_scores = scores - np.max(
+        scores,
+        axis=1,
+        keepdims=True
+    )
+
+    exponentials = np.exp(shifted_scores)
+
+    weights = exponentials / np.sum(
+        exponentials,
+        axis=1,
+        keepdims=True
+    )
+
+    # Combine value vectors using the attention weights.
+    output = weights @ V
+
+    return output, weights
+
+
+# ------------------------------------------------------------
+# PART 7: Run each attention head
+# ------------------------------------------------------------
+
+head_outputs = []
+all_attention_weights = []
+
+for head_index in range(num_heads):
+
+    print(f"\n{'=' * 15} HEAD {head_index + 1} {'=' * 15}")
+
+    # Calculate this head's Q, K and V from the SAME input X.
+    # The projections differ because each head has its own weights.
+    Q = X @ W_Q[head_index]
+    K = X @ W_K[head_index]
+    V = X @ W_V[head_index]
+
+    print("Q shape:", Q.shape)
+    print("K shape:", K.shape)
+    print("V shape:", V.shape)
+
+    # Calculate the output and attention distribution.
+    head_output, attention_weights = causal_attention(
+        Q, K, V
+    )
+
+    print("\nAttention weights:")
+    print(attention_weights)
+
+    print("\nThis head's output:")
+    print(head_output)
+
+    head_outputs.append(head_output)
+    all_attention_weights.append(attention_weights)
+
+
+# ------------------------------------------------------------
+# PART 8: Concatenate the head outputs
+# ------------------------------------------------------------
+
+# Each head output has shape (sequence_length, head_dim).
+#
+# Concatenating along axis=1 joins their feature columns.
+#
+# With two heads:
+# (5, 4) + (5, 4) -> (5, 8)
+
+concatenated = np.concatenate(
+    head_outputs,
+    axis=1
+)
+
+print("\nConcatenated output:")
+print(concatenated)
+print("Concatenated shape:", concatenated.shape)
+
+
+# ------------------------------------------------------------
+# PART 9: Apply the output projection
+# ------------------------------------------------------------
+
+# The output projection combines the features from all heads.
+#
+# Shape:
+# (num_heads * head_dim, d_model)
+#
+# Here: (8, 8)
+
+W_O = rng.normal(
+    loc=0.0,
+    scale=1 / np.sqrt(d_model),
+    size=(num_heads * head_dim, d_model)
+)
+
+# Project the joined features back to d_model dimensions.
+final_output = concatenated @ W_O
+
+print("\nFinal multi-head attention output:")
+print(final_output)
+print("Final output shape:", final_output.shape)
+
+
+# ------------------------------------------------------------
+# PART 10: Validate the result
+# ------------------------------------------------------------
+
+# Each head's attention probabilities must sum to one per row.
+for weights in all_attention_weights:
+    assert np.allclose(
+        weights.sum(axis=1),
+        np.ones(sequence_length)
+    )
+
+    # No head may attend to future positions.
+    assert np.allclose(
+        np.triu(weights, k=1),
+        0.0
+    )
+
+# The final output keeps the original model feature dimension.
+assert final_output.shape == (sequence_length, d_model)
+
+print("\nAll multi-head attention checks passed!")
+
