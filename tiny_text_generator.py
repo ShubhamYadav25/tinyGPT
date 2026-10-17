@@ -914,3 +914,147 @@ for i in range(min(5, len(X))):
 
 
 
+#============================================ Autoregressive text generation ===================
+"""
+Auto: the model uses its own previously generated output.
+Regressive: it predicts the next part of a sequence from the preceding context.
+
+we trained the model to predict the next character. But predicting one character isn't the same as generating a whole sequence. We need a way to use each prediction to make the next one.
+That process is called autoregressive generation.
+
+IDEA
+
+Starting prompt
+hel
+
+Step 1: predict next character
+l
+Text becomes hell
+
+Step 2: use the updated context
+o
+Text becomes hello
+
+Keep repeating
+hellohellohello...
+
+The important detail is that the model doesn't predict the entire sentence at once. It predicts one character, adds that character to the sequence, and predicts again.
+
+"""
+
+# ============================================================
+# STEP 8: AUTOREGRESSIVE TEXT GENERATION
+#
+# Goal:
+#   Use our trained model to generate characters one by one.
+#
+# Important:
+#   W and b must be the trained parameters from Step 7.
+# ============================================================
+
+# ------------------------------------------------------------
+# PART 1: Choose a starting prompt
+# ------------------------------------------------------------
+
+# This is the initial text that we give to the model.
+seed_text = "hel"
+
+# How many new characters should the model generate?
+max_new_chars = 15
+
+# Greedy generation means we always select the character
+# with the highest predicted probability.
+#
+# This makes our first experiment deterministic.
+# We'll explore random sampling later.
+generated_text = seed_text
+
+print("\n" + "=" * 50)
+print("AUTOREGRESSIVE TEXT GENERATION")
+print("=" * 50)
+
+print("Starting prompt:", repr(seed_text))
+print()
+
+
+# ------------------------------------------------------------
+# PART 2: Generate one character at a time
+# ------------------------------------------------------------
+
+for step in range(1, max_new_chars + 1):
+
+    # A. Take only the last context_length characters.
+    #
+    # For example:
+    # generated_text = "hello"
+    # context_length = 3
+    # context_text = "llo"
+    context_text = generated_text[-context_length:]
+
+    # B. Convert the context characters into integer IDs.
+    context_ids = [
+        char_to_id[character]
+        for character in context_text
+    ]
+
+    # C. Convert the IDs into one-hot vectors.
+    # Each character becomes a vector of vocab_size values.
+    context_vectors = one_hot_table[context_ids]
+
+    # D. Flatten the vectors into the model's input format.
+    # The batch dimension is 1 because we generate one example.
+    x_next = context_vectors.flatten().reshape(1, -1)
+
+    # E. Forward pass using the trained weights and biases.
+    next_logits = x_next @ W + b
+
+    # F. Convert the logits into probabilities.
+    next_probabilities = softmax(next_logits)[0]
+
+    # G. Choose the character with the highest probability.
+    next_id = int(np.argmax(next_probabilities))
+    next_char = id_to_char[next_id]
+
+    # H. Display what happened in this generation step.
+    confidence = next_probabilities[next_id]
+
+    print(
+        f"Step {step:2}: "
+        f"context={context_text!r:5} | "
+        f"next={next_char!r} | "
+        f"probability={confidence:.4f}"
+    )
+
+    # I. Append the predicted character to our text.
+    #
+    # This is the key to autoregressive generation:
+    # the model's own output becomes part of the next input.
+    generated_text += next_char
+
+
+# ------------------------------------------------------------
+# PART 3: Display the completed sequence
+# ------------------------------------------------------------
+
+print("\nFinal generated text:")
+print(generated_text)
+
+print("\nOriginal prompt:", seed_text)
+print("New characters generated:", len(generated_text) - len(seed_text))
+
+"""
+Greedy generation versus sampling
+next_id = int(np.argmax(next_probabilities))
+
+This is called greedy decoding: always select the most probable character.
+
+Another approach is sampling:
+next_id = int(np.random.choice(
+    vocab_size,
+    p=next_probabilities
+))
+
+Sampling chooses a character randomly according to the model's probability distribution. A less probable character can sometimes be selected.
+
+"""
+
