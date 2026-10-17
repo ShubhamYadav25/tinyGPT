@@ -2570,3 +2570,435 @@ assert final_output.shape == (sequence_length, d_model)
 
 print("\nAll multi-head attention checks passed!")
 
+#=============================================================================================
+"""
+Transformer block
+
+multi-head attention is only one part of a Transformer. A Transformer block adds other components that help the model process and refine the information it has gathered.
+
+What components are inside a Transformer block?
+
+Input X
+Token and positional embeddings
+
+1. Layer normalization
+Normalize each token's feature values
+
+2. Multi-head causal self-attention
+Let each token gather information from earlier tokens and itself
+
+Add the original input using a residual connection
+
+3. Layer normalization
+Normalize the updated token representations
+
+4. Feed-forward network
+Transform each token's features using a small neural network
+
+Add another residual connection
+
+Transformer block output
+Updated representation for every token
+
+
+A. Residual connections — why add the original input back?
+Suppose a token enters the attention layer with a vector \(X\). Attention calculates an updated vector \(A(X)\).
+A residual connection combines them:
+\[
+H=X+A(X)
+\]
+
+Why do this?
+Attention can add useful contextual information, but we don't necessarily want to discard the existing representation. The residual connection provides a direct path for the original information to continue through the network.
+
+B. Layer normalization — why normalize?
+The feature values in a neural network can have different scales as information flows through layers.
+Layer normalization standardizes the features of each token, then applies learnable scale and shift parameters.
+Conceptually, it helps keep the representations in a better-behaved numerical range during training.
+Unlike normalizing an entire dataset, layer normalization operates across the feature dimensions of an individual token. For our input matrix of shape (5, 8), it normalizes each row across its eight features.
+C. Feed-forward network — what does attention not do?
+Attention gathers and mixes information from different token positions. The feed-forward network performs a different job: it transforms the features of each token independently.
+We'll use two linear transformations with a ReLU activation:
+\[
+\operatorname{FFN}(x)=
+\operatorname{ReLU}(xW_1+b_1)W_2+b_2
+\]
+
+The first layer expands the feature dimension. The second returns it to the model dimension.
+For our example, we'll go from 8 features to 16, then back to 8.
+The same feed-forward weights are applied at every token position, but attention weights determine how information moves between positions.
+
+"""
+
+
+# ============================================================
+# STEP 13: BUILD ONE COMPLETE TRANSFORMER BLOCK
+#
+# Architecture:
+#   Input
+#     -> LayerNorm
+#     -> Multi-head causal self-attention
+#     -> Residual connection
+#     -> LayerNorm
+#     -> Feed-forward network
+#     -> Residual connection
+#     -> Output
+#
+# No hardcoded Q, K, or V values.
+# All projection matrices are initialized automatically.
+#
+# Important:
+#   This demonstrates a forward pass, not a trained GPT.
+# ============================================================
+
+import numpy as np
+
+rng = np.random.default_rng(42)
+np.set_printoptions(precision=3, suppress=True)
+
+
+# ------------------------------------------------------------
+# PART 1: Prepare the input text and vocabulary
+# ------------------------------------------------------------
+
+text = "hello"
+
+# Create unique character IDs automatically.
+vocabulary = sorted(set(text))
+
+char_to_id = {
+    character: index
+    for index, character in enumerate(vocabulary)
+}
+
+id_to_char = {
+    index: character
+    for character, index in char_to_id.items()
+}
+
+# Encode every character as its integer ID.
+token_ids = np.array([
+    char_to_id[character]
+    for character in text
+])
+
+vocab_size = len(vocabulary)
+sequence_length = len(token_ids)
+
+print("Input text:", text)
+print("Vocabulary:", vocabulary)
+print("Token IDs:", token_ids)
+
+
+# ------------------------------------------------------------
+# PART 2: Configure the Transformer block
+# ------------------------------------------------------------
+
+# Each token will be represented by eight features.
+d_model = 8
+
+# Use two independent attention heads.
+num_heads = 2
+
+# Each head will create four query, key, and value features.
+assert d_model % num_heads == 0
+head_dim = d_model // num_heads
+
+# The feed-forward network expands 8 features to 16.
+hidden_dim = 16
+
+print("\nModel dimension:", d_model)
+print("Number of attention heads:", num_heads)
+print("Dimension per head:", head_dim)
+print("Feed-forward hidden dimension:", hidden_dim)
+
+
+# ------------------------------------------------------------
+# PART 3: Create token and positional embeddings
+# ------------------------------------------------------------
+
+# One learned vector per character in the vocabulary.
+# Shape: (vocab_size, d_model)
+token_embedding_table = rng.normal(
+    0.0, 0.1, size=(vocab_size, d_model)
+)
+
+# One learned vector per position in this example.
+# Shape: (sequence_length, d_model)
+position_embedding_table = rng.normal(
+    0.0, 0.1, size=(sequence_length, d_model)
+)
+
+# Look up the input token embeddings.
+token_vectors = token_embedding_table[token_ids]
+
+# Look up the positional embeddings.
+positions = np.arange(sequence_length)
+position_vectors = position_embedding_table[positions]
+
+# Combine token identity with position information.
+X = token_vectors + position_vectors
+
+print("\nInput X shape:", X.shape)
+
+
+# ------------------------------------------------------------
+# PART 4: Implement layer normalization
+# ------------------------------------------------------------
+
+def layer_norm(x, gamma, beta, epsilon=1e-5):
+    """
+    Normalize each token independently across its features.
+
+    x shape: (..., d_model)
+    gamma and beta shape: (d_model,)
+
+    Gamma controls scale; beta controls shift.
+    Both can be learned during training.
+    """
+
+    # Calculate the mean of each token's feature vector.
+    mean = np.mean(x, axis=-1, keepdims=True)
+
+    # Calculate the variance of each token's feature vector.
+    variance = np.var(x, axis=-1, keepdims=True)
+
+    # Standardize the features.
+    normalized = (x - mean) / np.sqrt(variance + epsilon)
+
+    # Apply the learnable scale and shift parameters.
+    return gamma * normalized + beta
+
+
+# Layer normalization starts with scale=1 and shift=0.
+# Training can adjust these parameters later.
+gamma1 = np.ones(d_model)
+beta1 = np.zeros(d_model)
+
+gamma2 = np.ones(d_model)
+beta2 = np.zeros(d_model)
+
+
+# ------------------------------------------------------------
+# PART 5: Initialize attention projection matrices
+# ------------------------------------------------------------
+
+# Each head gets its own W_Q, W_K, and W_V.
+#
+# The model learns these matrices during training.
+# For now, they are random initial parameters.
+
+W_Q = [
+    rng.normal(
+        0.0, 1 / np.sqrt(d_model),
+        size=(d_model, head_dim)
+    )
+    for _ in range(num_heads)
+]
+
+W_K = [
+    rng.normal(
+        0.0, 1 / np.sqrt(d_model),
+        size=(d_model, head_dim)
+    )
+    for _ in range(num_heads)
+]
+
+W_V = [
+    rng.normal(
+        0.0, 1 / np.sqrt(d_model),
+        size=(d_model, head_dim)
+    )
+    for _ in range(num_heads)
+]
+
+# After concatenating both heads, project back to d_model.
+W_O = rng.normal(
+    0.0, 1 / np.sqrt(d_model),
+    size=(num_heads * head_dim, d_model)
+)
+
+
+# ------------------------------------------------------------
+# PART 6: Calculate multi-head causal self-attention
+# ------------------------------------------------------------
+
+def multi_head_attention(x):
+    """
+    x shape: (sequence_length, d_model)
+
+    Returns:
+        output: (sequence_length, d_model)
+        all_weights: one attention matrix per head
+    """
+
+    head_outputs = []
+    all_weights = []
+
+    for head_index in range(num_heads):
+
+        # Calculate this head's Q, K, and V from the input.
+        # No Q/K/V values are manually entered.
+        Q = x @ W_Q[head_index]
+        K = x @ W_K[head_index]
+        V = x @ W_V[head_index]
+
+        # Compare every query with every key.
+        scores = (Q @ K.T) / np.sqrt(head_dim)
+
+        # Prevent each token from attending to future tokens.
+        future_mask = np.triu(
+            np.ones(scores.shape, dtype=bool),
+            k=1
+        )
+
+        # Negative infinity becomes zero probability in softmax.
+        scores[future_mask] = -np.inf
+
+        # Stable row-wise softmax.
+        scores = scores - np.max(
+            scores, axis=1, keepdims=True
+        )
+
+        exponential_scores = np.exp(scores)
+
+        weights = exponential_scores / np.sum(
+            exponential_scores, axis=1, keepdims=True
+        )
+
+        # Combine the value vectors according to attention.
+        head_output = weights @ V
+
+        head_outputs.append(head_output)
+        all_weights.append(weights)
+
+        # Inspect the first head's shapes for learning.
+        if head_index == 0:
+            print("\nFirst head Q shape:", Q.shape)
+            print("First head K shape:", K.shape)
+            print("First head V shape:", V.shape)
+            print("First head attention weights:")
+            print(weights)
+
+    # Join the output features from all heads.
+    concatenated = np.concatenate(head_outputs, axis=1)
+
+    # Mix the concatenated features and restore d_model.
+    output = concatenated @ W_O
+
+    return output, all_weights
+
+
+# ------------------------------------------------------------
+# PART 7: First sublayer — attention + residual connection
+# ------------------------------------------------------------
+
+# Pre-LN: normalize the input before attention.
+normalized_X = layer_norm(X, gamma1, beta1)
+
+# Calculate attention using automatically computed Q/K/V.
+attention_output, attention_weights = multi_head_attention(
+    normalized_X
+)
+
+print("\nAttention output shape:", attention_output.shape)
+
+# Residual connection: retain the original representation.
+# Both matrices have shape (sequence_length, d_model).
+after_attention = X + attention_output
+
+print("After first residual:", after_attention.shape)
+
+
+# ------------------------------------------------------------
+# PART 8: Initialize the feed-forward network
+# ------------------------------------------------------------
+
+# First linear layer:
+# d_model -> hidden_dim
+W1 = rng.normal(
+    0.0, 1 / np.sqrt(d_model),
+    size=(d_model, hidden_dim)
+)
+b1 = np.zeros(hidden_dim)
+
+# Second linear layer:
+# hidden_dim -> d_model
+W2 = rng.normal(
+    0.0, 1 / np.sqrt(hidden_dim),
+    size=(hidden_dim, d_model)
+)
+b2 = np.zeros(d_model)
+
+
+# ------------------------------------------------------------
+# PART 9: Second sublayer — feed-forward network
+# ------------------------------------------------------------
+
+# Normalize before applying the feed-forward network.
+normalized_H = layer_norm(
+    after_attention, gamma2, beta2
+)
+
+# First linear transformation.
+hidden = normalized_H @ W1 + b1
+
+# ReLU introduces a nonlinear transformation.
+hidden = np.maximum(hidden, 0)
+
+# Second linear transformation restores d_model features.
+feed_forward_output = hidden @ W2 + b2
+
+print("\nFeed-forward hidden shape:", hidden.shape)
+print("Feed-forward output shape:", feed_forward_output.shape)
+
+
+# ------------------------------------------------------------
+# PART 10: Second residual connection
+# ------------------------------------------------------------
+
+# Preserve the input to the feed-forward sublayer as well.
+block_output = after_attention + feed_forward_output
+
+print("\nFinal Transformer block output:")
+print(block_output)
+print("Final output shape:", block_output.shape)
+
+
+# ------------------------------------------------------------
+# PART 11: Verify the architecture
+# ------------------------------------------------------------
+
+assert X.shape == (sequence_length, d_model)
+
+assert attention_output.shape == (
+    sequence_length, d_model
+)
+
+assert after_attention.shape == (
+    sequence_length, d_model
+)
+
+assert feed_forward_output.shape == (
+    sequence_length, d_model
+)
+
+assert block_output.shape == (
+    sequence_length, d_model
+)
+
+# Each attention head's rows should sum to one.
+for weights in attention_weights:
+    assert np.allclose(
+        weights.sum(axis=1),
+        np.ones(sequence_length)
+    )
+
+    # Future positions must receive zero weight.
+    assert np.allclose(
+        np.triu(weights, k=1),
+        0.0
+    )
+
+print("\nAll Transformer block checks passed!")
+
