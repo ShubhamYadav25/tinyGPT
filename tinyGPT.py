@@ -81,33 +81,52 @@ device = torch.device(
 print("Using device:", device)
 
 
+
 # ------------------------------------------------------------
-# PART 2: Create a tiny text dataset
+# PART 2: Create a tiny Indian-related Q&A dataset
 # ------------------------------------------------------------
 
-# This text is deliberately small so we can train quickly.
-# The model will learn character-level patterns from it.
-base_lines = [
-    "hello world!",
-    "hello there!",
-    "hello again!",
-    "how are you?",
-    "i am learning gpt.",
-    "the cat sat.",
-    "the cat is here.",
-    "we learn attention.",
-    "attention uses queries keys and values.",
-    "tiny models learn patterns.",
+# Each example teaches the model a text pattern.
+# We include questions and answers so it can learn how
+# such exchanges are written.
+training_examples = [
+    # Indian geography
+    "Question: What is the capital of India?\nAnswer: New Delhi.",
+    "Question: What is the capital of Maharashtra?\nAnswer: Mumbai.",
+    "Question: What is the capital of Rajasthan?\nAnswer: Jaipur.",
+    "Question: What is the capital of Tamil Nadu?\nAnswer: Chennai.",
+    "Question: What is the capital of Karnataka?\nAnswer: Bengaluru.",
+    "Question: What is the capital of West Bengal?\nAnswer: Kolkata.",
+    "Question: What is the capital of Uttar Pradesh?\nAnswer: Lucknow.",
+
+    # Indian history and national observances
+    "Question: When is Independence Day in India?\nAnswer: 15 August.",
+    "Question: When is Republic Day in India?\nAnswer: 26 January.",
+
+    # Indian landmarks and currency
+    "Question: Where is the Taj Mahal?\nAnswer: The Taj Mahal is in Agra.",
+    "Question: What is the currency of India?\nAnswer: The Indian currency is the rupee.",
+
+    # General facts
+    "Fact: India is a country in South Asia.",
+    "Fact: The Ganga is a major river in India.",
+    "Fact: The Himalayas lie in northern India.",
+    "Fact: India has many languages and cultures.",
+    "Fact: Cricket is a popular sport in India.",
+    "Fact: The Indian national flag has saffron, white, and green stripes and a blue Ashoka Chakra.",
+
+    # A few examples from our earlier lessons
+    "Fact: Attention uses queries, keys, and values.",
+    "Fact: A tiny language model learns patterns from text."
 ]
 
-# Repeat the examples to provide more training sequences.
-# The dataset is intentionally repetitive for this experiment.
-text = ("\n".join(base_lines) + "\n") * 80
+# Join the examples, then repeat the small dataset.
+# Repetition gives our tiny model many opportunities to see
+# the same patterns. It does not add new factual knowledge.
+text = ("\n".join(training_examples) + "\n") * 80
 
-# Character-level vocabulary.
-# Every character used in the dataset receives an integer ID.
+# Build the character vocabulary from the complete text.
 characters = sorted(set(text))
-
 vocab_size = len(characters)
 
 char_to_id = {
@@ -120,17 +139,21 @@ id_to_char = {
     for character, index in char_to_id.items()
 }
 
+print("Training text length:", len(text))
+print("Number of examples:", len(training_examples))
+print("Vocabulary size:", vocab_size)
+print("Vocabulary:", repr("".join(characters)))
+
 
 # Convert readable text into integer IDs.
 def encode(text_to_encode):
-    """Convert a string into a list of token IDs."""
+    """Convert text into a list of character IDs."""
 
-    # Raise a useful error if a character is outside our vocabulary.
     unknown = set(text_to_encode) - set(char_to_id)
 
     if unknown:
         raise ValueError(
-            f"Unknown characters: {sorted(unknown)!r}"
+            f"Characters not in vocabulary: {unknown!r}"
         )
 
     return [
@@ -139,15 +162,14 @@ def encode(text_to_encode):
     ]
 
 
-# Convert token IDs back into readable text.
+# Convert character IDs back into readable text.
 def decode(token_ids):
-    """Convert token IDs into a string."""
+    """Convert character IDs into a string."""
 
     return "".join(
         id_to_char[int(token_id)]
         for token_id in token_ids
     )
-
 
 print("\nDataset length:", len(text))
 print("Vocabulary size:", vocab_size)
@@ -690,92 +712,126 @@ print(f"Final train loss: {final_losses['train']:.4f}")
 print(f"Final validation loss: {final_losses['validation']:.4f}")
 
 
+
 # ------------------------------------------------------------
-# PART 13: Autoregressive text generation
+# PART 13: Stream generated text as it is produced
 # ------------------------------------------------------------
 
 @torch.no_grad()
-def generate(
+def generate_stream(
     model,
     prompt,
     max_new_tokens=100,
-    temperature=0.8
+    temperature=0.3,
+    stop_at_newline=True
 ):
     """
-    Generate characters one at a time.
+    Generate characters one at a time and print immediately.
 
-    Each generated character becomes part of the next input.
+    This resembles streamed chat output:
+    the user sees each character as soon as it is generated.
+
+    Since our tokenizer operates at character level, we stream
+    characters rather than word or subword tokens.
     """
 
     if temperature <= 0:
         raise ValueError("Temperature must be greater than zero.")
 
+    # Remember whether the model was in training mode.
+    was_training = model.training
+
+    # Disable dropout and other training-only behavior.
     model.eval()
 
-    # Convert the prompt into token IDs.
+    # Encode the starting question or prompt.
     generated_ids = torch.tensor(
         [encode(prompt)],
         dtype=torch.long,
         device=device
     )
 
-    for _ in range(max_new_tokens):
+    # Show the prompt immediately, without ending the line.
+    print(prompt, end="", flush=True)
 
-        # Keep only the most recent characters that fit
-        # into the model's context window.
-        context_ids = generated_ids[:, -block_size:]
+    try:
+        for _ in range(max_new_tokens):
 
-        # Get vocabulary logits for every context position.
-        logits = model(context_ids)
+            # The model can only process block_size characters.
+            # Keep the most recent context characters.
+            context_ids = generated_ids[:, -block_size:]
 
-        # The final position predicts the next character.
-        next_logits = logits[:, -1, :]
+            # Predict next-character logits for the context.
+            logits = model(context_ids)
 
-        # Temperature adjusts how concentrated the distribution is.
-        next_logits = next_logits / temperature
+            # Only the final position predicts the next character.
+            next_logits = logits[:, -1, :]
 
-        # Convert scores into a probability distribution.
-        probabilities = F.softmax(
-            next_logits,
-            dim=-1
-        )
+            # Temperature controls the randomness of sampling.
+            next_logits = next_logits / temperature
 
-        # Sample a character from the predicted distribution.
-        next_id = torch.multinomial(
-            probabilities,
-            num_samples=1
-        )
+            # Convert scores into a probability distribution.
+            probabilities = F.softmax(
+                next_logits,
+                dim=-1
+            )
 
-        # Append the sampled ID so it can condition the next step.
-        generated_ids = torch.cat(
-            [generated_ids, next_id],
-            dim=1
-        )
+            # Sample the next character from those probabilities.
+            next_id = torch.multinomial(
+                probabilities,
+                num_samples=1
+            )
 
-    model.train()
+            # Convert the predicted ID back into a character.
+            next_character = id_to_char[int(next_id.item())]
 
-    # Convert generated token IDs back into characters.
-    return decode(
-        generated_ids[0].tolist()
+            # Add the new character to the sequence.
+            # It becomes part of the next prediction's context.
+            generated_ids = torch.cat(
+                [generated_ids, next_id],
+                dim=1
+            )
+
+            # Print immediately instead of buffering the response.
+            print(next_character, end="", flush=True)
+
+            # For Q&A prompts, stop when an answer-ending newline
+            # is generated. Otherwise, continue up to the limit.
+            if stop_at_newline and next_character == "\n":
+                break
+
+    finally:
+        # Restore the model's original training/evaluation mode.
+        model.train(was_training)
+
+    # End the streamed response cleanly.
+    print()
+
+
+# ------------------------------------------------------------
+# PART 14: Try streaming some Indian-related answers
+# ------------------------------------------------------------
+
+print("\n" + "=" * 55)
+print("STREAMING GENERATION")
+print("=" * 55)
+
+# The prompts match prefixes present in our training examples.
+prompts = [
+    "Question: What is the capital of India?\nAnswer:",
+    "Question: Where is the Taj Mahal?\nAnswer:",
+    "Question: What is the currency of India?\nAnswer:"
+]
+
+for prompt in prompts:
+
+    print("\n--- New response ---")
+
+    generate_stream(
+        model=model,
+        prompt=prompt,
+        max_new_tokens=80,
+        temperature=0.3,
+        stop_at_newline=True
     )
-
-
-# ------------------------------------------------------------
-# PART 14: Generate text
-# ------------------------------------------------------------
-
-prompt = "hel"
-
-generated_text = generate(
-    model=model,
-    prompt=prompt,
-    max_new_tokens=100,
-    temperature=0.8
-)
-
-print("\n" + "=" * 50)
-print("GENERATED TEXT")
-print("=" * 50)
-
-print(generated_text)
 
