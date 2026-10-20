@@ -203,7 +203,7 @@ print("Validation token count:", len(val_data))
 
 # block_size:
 # Maximum number of characters the model can process at once.
-block_size = 24
+block_size = 64
 
 # d_model:
 # Number of features representing each character.
@@ -218,10 +218,13 @@ num_heads = 4
 num_layers = 2
 
 # Training settings.
-batch_size = 32
-max_iters = 1000
-eval_interval = 200
-eval_iters = 20
+# A smaller batch helps offset the extra computation from
+# the longer context on your CPU.
+batch_size = 8
+max_iters = 2500
+eval_interval = 500
+eval_iters = 10
+
 learning_rate = 3e-4
 
 # Each head receives an equal portion of model dimensions.
@@ -767,19 +770,28 @@ def generate_stream(
             # Only the final position predicts the next character.
             next_logits = logits[:, -1, :]
 
-            # Temperature controls the randomness of sampling.
-            next_logits = next_logits / temperature
+            # # Temperature controls the randomness of sampling.
+            # next_logits = next_logits / temperature
 
-            # Convert scores into a probability distribution.
-            probabilities = F.softmax(
+            # # Convert scores into a probability distribution.
+            # probabilities = F.softmax(
+            #     next_logits,
+            #     dim=-1
+            # )
+
+            # # Sample the next character from those probabilities.
+            # next_id = torch.multinomial(
+            #     probabilities,
+            #     num_samples=1
+            # )
+            
+            # GREEDY DECODING:
+            # Always choose the character with the highest logit.
+            # This removes random sampling from our debugging test.
+            next_id = torch.argmax(
                 next_logits,
-                dim=-1
-            )
-
-            # Sample the next character from those probabilities.
-            next_id = torch.multinomial(
-                probabilities,
-                num_samples=1
+                dim=-1,
+                keepdim=True
             )
 
             # Convert the predicted ID back into a character.
@@ -818,9 +830,9 @@ print("=" * 55)
 
 # The prompts match prefixes present in our training examples.
 prompts = [
-    "Question: What is the capital of India?\nAnswer:",
-    "Question: Where is the Taj Mahal?\nAnswer:",
-    "Question: What is the currency of India?\nAnswer:"
+    "Question: What is the capital of India?\nAnswer: ",
+    "Question: Where is the Taj Mahal?\nAnswer: ",
+    "Question: What is the currency of India?\nAnswer: "
 ]
 
 for prompt in prompts:
